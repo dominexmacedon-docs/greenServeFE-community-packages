@@ -78,15 +78,15 @@ jobs:
 
           NAME="$(printf '%s' "$META_PATH" | cut -d/ -f2)"
           VERSION="$(printf '%s' "$META_PATH" | cut -d/ -f3)"
-          if [[ -e "$META_PATH" ]]; then
-            echo "::error::Package metadata already exists at $META_PATH; published versions are immutable."
+          README_PATH="submissions/$NAME/$VERSION/README.md"
+          if [[ -e "$META_PATH" || -e "$README_PATH" ]]; then
+            echo "::error::Package metadata or README already exists for this version; published versions are immutable."
             exit 1
           fi
           RAW="https://raw.githubusercontent.com/$HEAD_REPO/$HEAD_SHA"
 
           mkdir -p publication
           curl --fail --location --retry 3 --silent --show-error "$RAW/$META_PATH" -o publication/package.json
-          README_PATH="submissions/$NAME/$VERSION/README.md"
           curl --fail --location --retry 3 --silent --show-error "$RAW/$README_PATH" -o publication/README.md
 
           readarray -t identity < <(python3 - publication/package.json "$NAME" "$VERSION" <<'PY'
