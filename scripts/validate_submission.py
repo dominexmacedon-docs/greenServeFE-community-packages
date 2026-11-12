@@ -10,9 +10,10 @@ import zipfile
 from pathlib import Path, PurePosixPath
 
 NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+PLATFORM_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 SEMVER_RE = re.compile(
-    r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
-    r"(?:-([0-9A-Za-z.-]+))?(?:\+([0-9A-Za-z.-]+))?$"
+    r"^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)"
+    r"(?:-([0-9A-Za-z.-]+))?(?:\\+([0-9A-Za-z.-]+))?$"
 )
 MAX_ZIP_BYTES = 90 * 1024 * 1024
 MAX_EXPANDED_BYTES = 512 * 1024 * 1024
@@ -64,13 +65,13 @@ def validate_metadata(path, expected_name, expected_version):
     for field in ("author", "license", "greenServeFE"):
         if not isinstance(data[field], str) or not data[field].strip() or len(data[field]) > 160:
             fail(f"{field} must be a non-empty string of at most 160 characters.")
+
     platforms = data["platforms"]
-    if not isinstance(platforms, list) or not platforms or len(platforms) > 30:
-        fail("platforms must be a non-empty array with at most 30 entries.")
-    if any(not isinstance(item, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", item) for item in platforms):
+    if not isinstance(platforms, list) or len(platforms) != 1:
+        fail("platforms must contain exactly one platform for the submitted ZIP.")
+    if not isinstance(platforms[0], str) or not PLATFORM_RE.fullmatch(platforms[0]):
         fail("platforms contains an invalid platform identifier.")
-    if len(set(platforms)) != len(platforms):
-        fail("platforms must not contain duplicates.")
+
     if "entry" in data and (not isinstance(data["entry"], str) or not data["entry"].strip() or len(data["entry"]) > 256):
         fail("entry, when supplied, must be a non-empty path string.")
     return data
@@ -92,7 +93,7 @@ def validate_zip(path):
             regular_files = 0
             for info in infos:
                 raw = info.filename
-                if not raw or "\\" in raw or raw.startswith("/"):
+                if not raw or "\\\\" in raw or raw.startswith("/"):
                     fail(f"unsafe ZIP path: {raw!r}")
                 normalized = PurePosixPath(raw)
                 if any(part in ("", ".", "..") for part in normalized.parts):
@@ -137,7 +138,10 @@ def main():
     parser.add_argument("--expected-name", required=True)
     parser.add_argument("--expected-version", required=True)
     args = parser.parse_args()
-    validate_metadata(args.metadata, args.expected_name, args.expected_version)
+    metadata = validate_metadata(args.metadata, args.expected_name, args.expected_version)
+    expected_zip = f"{metadata['name']}-{metadata['platforms'][0]}.zip"
+    if args.zip.name != expected_zip:
+        fail(f"ZIP filename must be {expected_zip}; do not include the version in the asset filename.")
     validate_zip(args.zip)
     print(f"Submission is structurally valid: {args.expected_name} {args.expected_version}")
     print("No submitted code was executed.")
