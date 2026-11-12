@@ -1,0 +1,174 @@
+name: Publish approved community package
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Approved submission Pull Request number"
+        required: true
+        type: number
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: community-package-publisher
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Verify approval and publish immutable release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out registry
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Verify owner approval and download submission
+        id: submission
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          GH_OWNER: ${{ github.repository_owner }}
+          ACTOR: ${{ github.actor }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$ACTOR" != "$GH_OWNER" ]]; then
+            echo "::error::Only the repository owner may publish community packages."
+            exit 1
+          fi
+
+          PR="$(gh api "repos/$GH_REPO/pulls/$PR_NUMBER")"
+          echo "$PR" > pr.json
+          jq -e '.state == "open" and .base.ref == "main" and .head.repo.full_name != null' pr.json >/dev/null || {
+            echo "::error::The Pull Request must be open, target main, and come from an accessible repository."
+            exit 1
+          }
+
+          HEAD_REPO="$(jq -r '.head.repo.full_name' pr.json)"
+          HEAD_SHA="$(jq -r '.head.sha' pr.json)"
+          BASE_SHA="$(jq -r '.base.sha' pr.json)"
+
+          gh api --paginate --slurp "repos/$GH_REPO/pulls/$PR_NUMBER/reviews" > reviews-pages.json
+          jq -e --arg owner "$GH_OWNER" --arg sha "$HEAD_SHA" '
+            [ .[][] | select(.user.login == $owner and .state == "APPROVED" and .commit_id == $sha) ] | length > 0
+          ' reviews-pages.json >/dev/null || {
+            echo "::error::The repository owner must approve the exact current Pull Request head commit before publication."
+            exit 1
+          }
+
+          gh api --paginate --jq '.[].filename' "repos/$GH_REPO/pulls/$PR_NUMBER/files" > changed-files.txt
+          mapfile -t changed < changed-files.txt
+          if [[ "${#changed[@]}" -ne 2 ]]; then
+            echo "::error::The PR must contain exactly package.json and one ZIP."
+            exit 1
+          fi
+
+          python3 - "${changed[@]}" <<'PY'
+          import re, sys
+          paths = sorted(sys.argv[1:])
+          m = next((re.fullmatch(r"submissions/([a-z0-9]+(?:-[a-z0-9]+)*)/([^/]+)/package\.json", p) for p in paths if re.fullmatch(r"submissions/([a-z0-9]+(?:-[a-z0-9]+)*)/([^/]+)/package\.json", p)), None)
+          if not m:
+              raise SystemExit("Missing expected package metadata path.")
+          name, version = m.groups()
+          expected = sorted([f"submissions/{name}/{version}/package.json", f"submissions/{name}/{version}/{name}-{version}.zip"])
+          if paths != expected:
+              raise SystemExit("PR contains unexpected files or mismatched package paths.")
+          print(name)
+          print(version)
+          PY
+          mapfile -t identity < <(python3 - "${changed[@]}" <<'PY'
+          import re, sys
+          p = next(p for p in sys.argv[1:] if p.endswith("/package.json"))
+          m = re.fullmatch(r"submissions/([a-z0-9]+(?:-[a-z0-9]+)*)/([^/]+)/package\.json", p)
+          print(m.group(1)); print(m.group(2))
+          PY
+          )
+          NAME="${identity[0]}"
+          VERSION="${identity[1]}"
+          META_PATH="submissions/$NAME/$VERSION/package.json"
+          ZIP_NAME="$NAME-$VERSION.zip"
+          ZIP_PATH="submissions/$NAME/$VERSION/$ZIP_NAME"
+          RAW="https://raw.githubusercontent.com/$HEAD_REPO/$HEAD_SHA"
+
+          mkdir -p publication
+          curl --fail --location --retry 3 --silent --show-error "$RAW/$META_PATH" -o publication/package.json
+          curl --fail --location --retry 3 --silent --show-error "$RAW/$ZIP_PATH" -o "publication/$ZIP_NAME"
+
+          python3 scripts/validate_submission.py \
+            --metadata publication/package.json \
+            --zip "publication/$ZIP_NAME" \
+            --expected-name "$NAME" \
+            --expected-version "$VERSION"
+
+          TAG="$NAME-v$VERSION"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "::error::Version tag $TAG already exists. Published versions cannot be replaced."
+            exit 1
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::A release for $TAG already exists. Published versions cannot be replaced."
+            exit 1
+          fi
+
+          DIGEST="$(sha256sum "publication/$ZIP_NAME" | awk '{print $1}')"
+          printf '%s  %s\n' "$DIGEST" "$ZIP_NAME" > "publication/$ZIP_NAME.sha256"
+          printf 'Package: %s\nVersion: %s\nDeveloper: %s\nCompatibility: %s\nPlatforms: %s\n\nSHA-256: %s\n\nThis release was reviewed and manually published by the repository owner. Published versions are immutable.\n' \
+            "$NAME" "$VERSION" "$(jq -r '.author' publication/package.json)" \
+            "$(jq -r '.greenServeFE' publication/package.json)" \
+            "$(jq -r '.platforms | join(", ")' publication/package.json)" "$DIGEST" > publication/RELEASE_NOTES.md
+
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "zip_name=$ZIP_NAME" >> "$GITHUB_OUTPUT"
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "head_repo=$HEAD_REPO" >> "$GITHUB_OUTPUT"
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "${{ steps.submission.outputs.tag }}" \
+            "publication/${{ steps.submission.outputs.zip_name }}#${{ steps.submission.outputs.zip_name }}" \
+            "publication/${{ steps.submission.outputs.zip_name }}.sha256#${{ steps.submission.outputs.zip_name }}.sha256" \
+            "publication/package.json#package.json" \
+            --title "${{ steps.submission.outputs.name }} v${{ steps.submission.outputs.version }}" \
+            --notes-file publication/RELEASE_NOTES.md \
+            --target main
+
+      - name: Update versioned registry
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 scripts/update_registry.py \
+            --metadata publication/package.json \
+            --repository "$GITHUB_REPOSITORY" \
+            --tag "${{ steps.submission.outputs.tag }}" \
+            --sha256 "${{ steps.submission.outputs.digest }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add registry/index.json
+          git diff --cached --check
+          git commit -m "Publish ${{ steps.submission.outputs.name }} v${{ steps.submission.outputs.version }}"
+          git push origin HEAD:main
+
+      - name: Record publication and close submission PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh pr comment "${{ steps.submission.outputs.pr_number }}" --body \
+            "Approved and published as [${{ steps.submission.outputs.name }} v${{ steps.submission.outputs.version }}](https://github.com/$GITHUB_REPOSITORY/releases/tag/${{ steps.submission.outputs.tag }}). The ZIP, SHA-256 checksum, and metadata are available in the release. The registry has been updated. This submission PR is being closed without merging so binary ZIP files do not accumulate in the Git history."
+          gh pr close "${{ steps.submission.outputs.pr_number }}"

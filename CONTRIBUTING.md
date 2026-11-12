@@ -1,0 +1,91 @@
+# Contributing community modules
+
+Thank you for building for greenServeFE. This repository is the reviewed release registry for community modules.
+
+## Submission model
+
+1. Fork this repository.
+2. Add exactly two files for one package version:
+   - `submissions/<package-name>/<version>/package.json`
+   - `submissions/<package-name>/<version>/<package-name>-<version>.zip`
+3. Open a Pull Request against `main`.
+4. Wait for the automated, read-only validation and maintainer review.
+5. The repository owner reviews the exact current commit and approves the Pull Request.
+6. The owner manually runs **Publish approved package** from the Actions tab, supplying the Pull Request number.
+
+A Pull Request never publishes a release automatically. Approval must apply to the latest head commit. A maintainer runs the publishing workflow only after reviewing and testing the ZIP.
+
+## Why a published submission PR is closed, not merged
+
+The ZIP is kept as a GitHub Release asset, not in the default branch's Git history. After successful publication, the workflow records the version in `registry/index.json`, comments on the Pull Request, and closes it without merging. This keeps the registry repository small while preserving the contributor's fork and the review discussion.
+
+## Package metadata
+
+Use this exact shape:
+
+```json
+{
+  "name": "gs-example",
+  "version": "1.0.0",
+  "description": "A concise description of this greenServeFE module.",
+  "author": "github-username",
+  "license": "MIT",
+  "greenServeFE": ">=1.0.6",
+  "platforms": ["linux-x86_64"],
+  "entry": "libgs_example.so"
+}
+```
+
+Required fields: `name`, `version`, `description`, `author`, `license`, `greenServeFE`, and `platforms`. The `entry` field is optional. Use a lowercase package name containing letters, numbers, and single hyphens. Versions must be strict Semantic Versioning: `MAJOR.MINOR.PATCH`, optionally followed by a prerelease or build identifier. Do not prefix versions with `v`.
+
+The package name and version must match the directory and ZIP filename exactly. Each package version is immutable; publish a new version instead of replacing an existing one.
+
+## ZIP requirements
+
+- Submit one complete ZIP, named `<package-name>-<version>.zip`.
+- Maximum submitted ZIP size: 90 MiB.
+- Maximum expanded size: 512 MiB.
+- Maximum entries: 10,000.
+- No encrypted entries, symbolic links, absolute paths, parent-directory traversal, duplicate paths, or ZIP bombs.
+- Include the files needed by users to install, build, or understand the module.
+- Do not include credentials, private keys, tokens, personal data, or unrelated files.
+- Validation inspects the archive but does not execute its contents.
+
+The ZIP may contain source code, headers, shared libraries, documentation, examples, and other module files. State supported platforms accurately.
+
+## Versioning policy
+
+Follow Semantic Versioning:
+- PATCH: compatible bug fixes.
+- MINOR: backward-compatible features.
+- MAJOR: breaking changes.
+- PRERELEASE: optional testing versions such as `1.2.0-rc.1`.
+
+A version tag is `<package-name>-v<version>`, for example `gs-example-v1.0.0`. Published versions and their release assets are immutable. Never reuse a version number, even for a corrected archive.
+
+## Review and publication
+
+Automated checks confirm metadata, paths, ZIP integrity, archive safety, and size limits. They cannot prove that a module is safe or correct. Maintainers must inspect the source and test the module in an isolated environment before approval.
+
+The owner must approve the current Pull Request head commit. After that, run:
+
+**Actions → Publish approved package → Run workflow → enter the Pull Request number.**
+
+The workflow creates a GitHub Release containing:
+- The original ZIP.
+- A SHA-256 checksum file.
+- The package metadata.
+
+It then updates `registry/index.json`. The registry's `latest` value is calculated using Semantic Versioning, not string sorting. Prereleases do not supersede a stable release.
+
+## Registry consumers
+
+The public catalogue is:
+
+`https://raw.githubusercontent.com/MacoraOne/greenServeFE-community-packages/main/registry/index.json`
+
+Each package entry lists every published version, its release tag, download URL, checksum, metadata, and the latest version. Consumers should verify SHA-256 after downloading.
+
+## Scope
+
+Only community module submissions belong in this registry. Do not modify the repository's workflows, scripts, registry files, schemas, or policies in a package submission Pull Request.

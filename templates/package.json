@@ -1,0 +1,12 @@
+{
+  "name": "gs-example",
+  "version": "1.0.0",
+  "description": "A concise description of this greenServeFE module.",
+  "author": "your-github-username",
+  "license": "MIT",
+  "greenServeFE": ">=1.0.6",
+  "platforms": [
+    "linux-x86_64"
+  ],
+  "entry": "libgs_example.so"
+}

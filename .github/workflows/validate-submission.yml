@@ -1,0 +1,87 @@
+name: Validate community submission
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "submissions/**"
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: validate-submission-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate metadata and ZIP safely
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out trusted validation code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+
+      - name: Check out submitted files without credentials
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: pr-source
+          persist-credentials: false
+
+      - name: Validate changed paths and package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh api --paginate --jq '.[].filename' "repos/$GH_REPO/pulls/$PR_NUMBER/files" > changed-files.txt
+          mapfile -t changed < changed-files.txt
+
+          if [[ "${#changed[@]}" -ne 2 ]]; then
+            echo "::error::A submission PR must change exactly two files: package.json and one ZIP."
+            exit 1
+          fi
+
+          python3 - "${changed[@]}" <<'PY'
+          import pathlib
+          import re
+          import subprocess
+          import sys
+
+          paths = sorted(sys.argv[1:])
+          metadata_re = re.compile(r"^submissions/([a-z0-9]+(?:-[a-z0-9]+)*)/([^/]+)/package\.json$")
+          match = next((metadata_re.fullmatch(p) for p in paths if metadata_re.fullmatch(p)), None)
+          if not match:
+              raise SystemExit("Expected submissions/<name>/<version>/package.json")
+          name, version = match.groups()
+          expected_zip = f"submissions/{name}/{version}/{name}-{version}.zip"
+          if paths != sorted([f"submissions/{name}/{version}/package.json", expected_zip]):
+              raise SystemExit("Only the matching package.json and <name>-<version>.zip are allowed.")
+          root = pathlib.Path("pr-source")
+          metadata = root / f"submissions/{name}/{version}/package.json"
+          archive = root / expected_zip
+          if not metadata.is_file() or not archive.is_file():
+              raise SystemExit("The submitted metadata or ZIP is missing from the PR head.")
+          subprocess.run([
+              sys.executable, "scripts/validate_submission.py",
+              "--metadata", str(metadata),
+              "--zip", str(archive),
+              "--expected-name", name,
+              "--expected-version", version
+          ], check=True)
+          PY
