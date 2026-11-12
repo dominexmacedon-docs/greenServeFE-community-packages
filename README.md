@@ -7,7 +7,7 @@ A reviewed release registry for community-built greenServeFE modules.
 Community releases follow the same naming convention as the official greenServeFE module releases:
 
 - **Release tag:** `<package-name>-v<version>` (for example, `test-g-v1.0.0`)
-- **Release title:** `<package-name> v<version>` (for example, `test-g v1.0.0`)
+- **Release title:** `<package-name>-v<version>` (for example, `test-g-v1.0.0`)
 - **ZIP asset:** `<package-name>-<platform>.zip` (for example, `test-g-linux-x86_64.zip`)
 
 The ZIP filename does **not** contain the version. The release tag and `package.json` identify the version. The ZIP keeps its platform-specific name, just like the official greenServeFE module releases.
