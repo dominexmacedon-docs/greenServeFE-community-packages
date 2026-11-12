@@ -17,7 +17,7 @@ A Pull Request never publishes a release automatically. Approval must apply to t
 
 ## Why a published submission PR is closed, not merged
 
-The ZIP is kept as a GitHub Release asset, not in the default branch's Git history. After successful publication, the workflow records the version in `registry/index.json`, comments on the Pull Request, and closes it without merging. This keeps the registry repository small while preserving the contributor's fork and the review discussion.
+The ZIP is used temporarily from the Pull Request for validation and publication, then uploaded as a GitHub Release asset. It is never committed to the default branch. After successful publication, the workflow copies only `package.json` into `submissions/<package-name>/<version>/package.json`, updates `registry/index.json`, comments on the Pull Request, and closes it without merging. The published repository therefore keeps the metadata in the package directory while the binary ZIP exists only in the release.
 
 ## Package metadata
 
@@ -74,9 +74,8 @@ The owner must approve the current Pull Request head commit. After that, run:
 The workflow creates a GitHub Release containing:
 - The original platform ZIP, retaining its version-independent filename.
 - A SHA-256 checksum file with the same archive filename plus `.sha256`.
-- The package metadata.
 
-It then updates `registry/index.json`. The release tag identifies the package version. The registry's `latest` value is calculated using Semantic Versioning, not string sorting. Prereleases do not supersede a stable release.
+It stores `package.json` at `submissions/<package-name>/<version>/package.json` in the repository and updates `registry/index.json`. The metadata file is not duplicated as a release asset. The release tag identifies the package version. The registry's `latest` value is calculated using Semantic Versioning, not string sorting. Prereleases do not supersede a stable release.
 
 ## Registry consumers
 
