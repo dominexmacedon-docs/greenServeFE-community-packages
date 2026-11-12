@@ -14,17 +14,18 @@ The ZIP filename does **not** contain the version. The release tag and `package.
 
 ## Submit a module
 
-For review, submit exactly these two files in the Pull Request:
+For review, submit exactly these three files in the Pull Request:
 
 ```text
 submissions/
 └── test-g/
     └── 1.0.0/
         ├── package.json
+        ├── README.md
         └── test-g-linux-x86_64.zip
 ```
 
-The ZIP contains the module files, for example `test-g.so`. Do not upload the shared library separately. The ZIP is used by the publishing workflow and is not retained in the repository's `main` branch. After publication, only `package.json` remains in the version directory; the ZIP is attached to the GitHub Release.
+The ZIP contains the module files, for example `test-g.so`. Do not upload the shared library separately. The ZIP is used by the publishing workflow and is not retained in the repository's `main` branch. After publication, `package.json` and `README.md` remain in the version directory; the ZIP is attached to the GitHub Release.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for metadata requirements, archive limits, review, and publication instructions.
 
