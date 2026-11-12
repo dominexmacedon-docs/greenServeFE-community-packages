@@ -168,7 +168,15 @@ jobs:
             --sha256 "${{ steps.submission.outputs.digest }}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add registry/index.json
+          META_DEST="submissions/${{ steps.submission.outputs.name }}/${{ steps.submission.outputs.version }}/package.json"
+          mkdir -p "$(dirname "$META_DEST")"
+          if [[ -e "$META_DEST" ]]; then
+            echo "::error::Package metadata already exists at $META_DEST; refusing to overwrite a published version."
+            exit 1
+          fi
+          cp publication/package.json "$META_DEST"
+
+          git add registry/index.json "$META_DEST"
           git diff --cached --check
           git commit -m "Publish ${{ steps.submission.outputs.name }} v${{ steps.submission.outputs.version }}"
           git push origin HEAD:main
