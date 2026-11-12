@@ -78,6 +78,10 @@ jobs:
 
           NAME="$(printf '%s' "$META_PATH" | cut -d/ -f2)"
           VERSION="$(printf '%s' "$META_PATH" | cut -d/ -f3)"
+          if [[ -e "$META_PATH" ]]; then
+            echo "::error::Package metadata already exists at $META_PATH; published versions are immutable."
+            exit 1
+          fi
           RAW="https://raw.githubusercontent.com/$HEAD_REPO/$HEAD_SHA"
 
           mkdir -p publication
@@ -186,5 +190,5 @@ jobs:
         run: |
           set -euo pipefail
           gh pr comment "${{ steps.submission.outputs.pr_number }}" --body \
-            "Approved and published as [${{ steps.submission.outputs.name }} v${{ steps.submission.outputs.version }}](https://github.com/$GITHUB_REPOSITORY/releases/tag/${{ steps.submission.outputs.tag }}). The platform ZIP, SHA-256 checksum, and metadata are available in the release. The registry has been updated. This submission PR is being closed without merging so binary ZIP files do not accumulate in the Git history."
+            "Approved and published as [${{ steps.submission.outputs.name }} v${{ steps.submission.outputs.version }}](https://github.com/$GITHUB_REPOSITORY/releases/tag/${{ steps.submission.outputs.tag }}). The platform ZIP and SHA-256 checksum are attached to the release. The package.json metadata is stored at submissions/${{ steps.submission.outputs.name }}/${{ steps.submission.outputs.version }}/package.json in the repository, and the registry has been updated. This submission PR is being closed without merging so binary ZIP files do not accumulate in the Git history."
           gh pr close "${{ steps.submission.outputs.pr_number }}"
