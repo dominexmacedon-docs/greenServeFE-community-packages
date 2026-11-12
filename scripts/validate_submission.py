@@ -131,14 +131,31 @@ def validate_zip(path):
     print(f"Validated ZIP: {regular_files} files, {expanded} expanded bytes, {size} compressed bytes.")
 
 
+def validate_readme(path):
+    if not path.is_file():
+        fail("README.md does not exist.")
+    try:
+        content = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        fail(f"README.md must be readable UTF-8 Markdown: {exc}")
+    size = len(content.encode("utf-8"))
+    if not content.strip() or size > 256 * 1024:
+        fail("README.md must be non-empty and no larger than 256 KiB.")
+    if chr(0) in content:
+        fail("README.md must not contain NUL bytes.")
+    print(f"Validated README.md: {size} bytes.")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--metadata", required=True, type=Path)
     parser.add_argument("--zip", required=True, type=Path)
+    parser.add_argument("--readme", required=True, type=Path)
     parser.add_argument("--expected-name", required=True)
     parser.add_argument("--expected-version", required=True)
     args = parser.parse_args()
     metadata = validate_metadata(args.metadata, args.expected_name, args.expected_version)
+    validate_readme(args.readme)
     expected_zip = f"{metadata['name']}-{metadata['platforms'][0]}.zip"
     if args.zip.name != expected_zip:
         fail(f"ZIP filename must be {expected_zip}; do not include the version in the asset filename.")
