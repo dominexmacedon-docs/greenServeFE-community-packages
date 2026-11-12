@@ -65,8 +65,8 @@ jobs:
 
           gh api --paginate --jq '.[].filename' "repos/$GH_REPO/pulls/$PR_NUMBER/files" > changed-files.txt
           mapfile -t changed < changed-files.txt
-          if [[ "${#changed[@]}" -ne 2 ]]; then
-            echo "::error::The PR must contain exactly package.json and one platform ZIP."
+          if [[ "${#changed[@]}" -ne 3 ]]; then
+            echo "::error::The PR must contain exactly package.json, README.md, and one platform ZIP."
             exit 1
           fi
 
@@ -86,6 +86,8 @@ jobs:
 
           mkdir -p publication
           curl --fail --location --retry 3 --silent --show-error "$RAW/$META_PATH" -o publication/package.json
+          README_PATH="submissions/$NAME/$VERSION/README.md"
+          curl --fail --location --retry 3 --silent --show-error "$RAW/$README_PATH" -o publication/README.md
 
           readarray -t identity < <(python3 - publication/package.json "$NAME" "$VERSION" <<'PY'
           import json, re, sys
@@ -107,9 +109,9 @@ jobs:
           ZIP_NAME="${identity[1]}"
           ZIP_PATH="submissions/$NAME/$VERSION/$ZIP_NAME"
           EXPECTED_META="submissions/$NAME/$VERSION/package.json"
-          if [[ "${changed[0]}" != "$EXPECTED_META" && "${changed[1]}" != "$EXPECTED_META" ]] || \
-             [[ "${changed[0]}" != "$ZIP_PATH" && "${changed[1]}" != "$ZIP_PATH" ]]; then
-            echo "::error::The PR must contain only package.json and $ZIP_NAME in the matching package/version directory."
+          EXPECTED_README="submissions/$NAME/$VERSION/README.md"
+          if [[ ! " ${changed[*]} " =~ " $EXPECTED_META " || ! " ${changed[*]} " =~ " $EXPECTED_README " || ! " ${changed[*]} " =~ " $ZIP_PATH " ]]; then
+            echo "::error::The PR must contain only package.json, README.md, and $ZIP_NAME in the matching package/version directory."
             exit 1
           fi
 
@@ -119,7 +121,8 @@ jobs:
             --metadata publication/package.json \
             --zip "publication/$ZIP_NAME" \
             --expected-name "$NAME" \
-            --expected-version "$VERSION"
+            --expected-version "$VERSION" \
+            --readme publication/README.md
 
           TAG="$NAME-v$VERSION"
           if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
@@ -171,15 +174,18 @@ jobs:
             --sha256 "${{ steps.submission.outputs.digest }}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          META_DEST="submissions/${{ steps.submission.outputs.name }}/${{ steps.submission.outputs.version }}/package.json"
-          mkdir -p "$(dirname "$META_DEST")"
-          if [[ -e "$META_DEST" ]]; then
-            echo "::error::Package metadata already exists at $META_DEST; refusing to overwrite a published version."
+          META_DIR="submissions/${{ steps.submission.outputs.name }}/${{ steps.submission.outputs.version }}"
+          META_DEST="$META_DIR/package.json"
+          README_DEST="$META_DIR/README.md"
+          mkdir -p "$META_DIR"
+          if [[ -e "$META_DEST" || -e "$README_DEST" ]]; then
+            echo "::error::Package metadata or README already exists in $META_DIR; refusing to overwrite a published version."
             exit 1
           fi
           cp publication/package.json "$META_DEST"
+          cp publication/README.md "$README_DEST"
 
-          git add registry/index.json "$META_DEST"
+          git add registry/index.json "$META_DEST" "$README_DEST"
           git diff --cached --check
           git commit -m "Publish ${{ steps.submission.outputs.name }} v${{ steps.submission.outputs.version }}"
           git push origin HEAD:main
@@ -190,5 +196,5 @@ jobs:
         run: |
           set -euo pipefail
           gh pr comment "${{ steps.submission.outputs.pr_number }}" --body \
-            "Approved and published as [${{ steps.submission.outputs.name }} v${{ steps.submission.outputs.version }}](https://github.com/$GITHUB_REPOSITORY/releases/tag/${{ steps.submission.outputs.tag }}). The platform ZIP and SHA-256 checksum are attached to the release. The package.json metadata is stored at submissions/${{ steps.submission.outputs.name }}/${{ steps.submission.outputs.version }}/package.json in the repository, and the registry has been updated. This submission PR is being closed without merging so binary ZIP files do not accumulate in the Git history."
+            "Approved and published as [${{ steps.submission.outputs.name }} v${{ steps.submission.outputs.version }}](https://github.com/$GITHUB_REPOSITORY/releases/tag/${{ steps.submission.outputs.tag }}). The platform ZIP and SHA-256 checksum are attached to the release. The package.json and developer README.md are stored at submissions/${{ steps.submission.outputs.name }}/${{ steps.submission.outputs.version }}/ in the repository; the ZIP and SHA-256 checksum exist only as release assets. The registry has been updated. This submission PR is being closed without merging so binary ZIP files do not accumulate in the Git history."
           gh pr close "${{ steps.submission.outputs.pr_number }}"
