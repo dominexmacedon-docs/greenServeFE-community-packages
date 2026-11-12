@@ -9,7 +9,8 @@
 
 ## Submission checklist
 
-- [ ] I added exactly one `package.json` and one complete ZIP under `submissions/<name>/<version>/`.
+- [ ] I added `package.json`, `README.md`, and one complete ZIP under `submissions/<name>/<version>/`.
+- [ ] The README explains the module, compatibility, setup, and usage.
 - [ ] The package name, version, directory, and ZIP filename match.
 - [ ] The ZIP contains no credentials, secrets, private data, or unrelated files.
 - [ ] I own this contribution or have permission to distribute all included material.
