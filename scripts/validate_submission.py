@@ -12,8 +12,8 @@ from pathlib import Path, PurePosixPath
 NAME_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 PLATFORM_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 SEMVER_RE = re.compile(
-    r"^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)"
-    r"(?:-([0-9A-Za-z.-]+))?(?:\\+([0-9A-Za-z.-]+))?$"
+    r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
+    r"(?:-([0-9A-Za-z.-]+))?(?:\+([0-9A-Za-z.-]+))?$"
 )
 MAX_ZIP_BYTES = 90 * 1024 * 1024
 MAX_EXPANDED_BYTES = 512 * 1024 * 1024
@@ -93,7 +93,7 @@ def validate_zip(path):
             regular_files = 0
             for info in infos:
                 raw = info.filename
-                if not raw or "\\\\" in raw or raw.startswith("/"):
+                if not raw or "\\" in raw or raw.startswith("/"):
                     fail(f"unsafe ZIP path: {raw!r}")
                 normalized = PurePosixPath(raw)
                 if any(part in ("", ".", "..") for part in normalized.parts):
