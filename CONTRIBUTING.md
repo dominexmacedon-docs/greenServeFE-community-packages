@@ -5,8 +5,9 @@ Thank you for building for greenServeFE. This repository is the reviewed release
 ## Submission model
 
 1. Fork this repository.
-2. Add exactly two files for one package version:
+2. Add exactly three files for one package version:
    - `submissions/<package-name>/<version>/package.json`
+   - `submissions/<package-name>/<version>/README.md`
    - `submissions/<package-name>/<version>/<package-name>-<platform>.zip`
 3. Open a Pull Request against `main`.
 4. Wait for the automated, read-only validation and maintainer review.
@@ -17,7 +18,7 @@ A Pull Request never publishes a release automatically. Approval must apply to t
 
 ## Why a published submission PR is closed, not merged
 
-The ZIP is used temporarily from the Pull Request for validation and publication, then uploaded as a GitHub Release asset. It is never committed to the default branch. After successful publication, the workflow copies only `package.json` into `submissions/<package-name>/<version>/package.json`, updates `registry/index.json`, comments on the Pull Request, and closes it without merging. The published repository therefore keeps the metadata in the package directory while the binary ZIP exists only in the release.
+The ZIP is used temporarily from the Pull Request for validation and publication, then uploaded as a GitHub Release asset. It is never committed to the default branch. After successful publication, the workflow copies only `package.json` and `README.md` into `submissions/<package-name>/<version>/`, updates `registry/index.json`, comments on the Pull Request, and closes it without merging. The published repository therefore keeps `package.json` and the developer README in the package directory while the binary ZIP exists only in the release.
 
 ## Package metadata
 
@@ -39,6 +40,13 @@ Use this exact shape:
 Required fields: `name`, `version`, `description`, `author`, `license`, `greenServeFE`, and `platforms`. The `entry` field is optional. Use a lowercase package name containing letters, numbers, and single hyphens. Versions must be strict Semantic Versioning: `MAJOR.MINOR.PATCH`, optionally followed by a prerelease or build identifier. Do not prefix versions with `v`.
 
 Each submission contains one platform archive, so `platforms` must contain exactly one platform identifier. The package name and version must match the submission directory. The archive filename is `<package-name>-<platform>.zip`; it deliberately does not contain the version. For example, package `gs_test` (if using a valid lowercase-hyphen package name, `gs-test`) for `linux-x86_64` is uploaded as `gs-test-linux-x86_64.zip`.
+
+## Developer README requirements
+
+- Every package version must include `README.md` beside `package.json`.
+- Explain the module purpose, supported greenServeFE version/platform, installation or setup steps, usage examples, exported functions, and required dependencies.
+- Use UTF-8 Markdown; the file must be non-empty and no larger than 256 KiB.
+- Do not include credentials, private keys, tokens, personal data, or unrelated material.
 
 ## ZIP requirements
 
@@ -75,7 +83,7 @@ The workflow creates a GitHub Release containing:
 - The original platform ZIP, retaining its version-independent filename.
 - A SHA-256 checksum file with the same archive filename plus `.sha256`.
 
-It stores `package.json` at `submissions/<package-name>/<version>/package.json` in the repository and updates `registry/index.json`. The metadata file is not duplicated as a release asset. The release tag identifies the package version. The registry's `latest` value is calculated using Semantic Versioning, not string sorting. Prereleases do not supersede a stable release.
+It stores `package.json` and the submitted `README.md` at `submissions/<package-name>/<version>/` in the repository and updates `registry/index.json`. The metadata file is not duplicated as a release asset. The release tag identifies the package version. The registry's `latest` value is calculated using Semantic Versioning, not string sorting. Prereleases do not supersede a stable release.
 
 ## Registry consumers
 
