@@ -61,7 +61,7 @@ Follow Semantic Versioning:
 - MAJOR: breaking changes.
 - PRERELEASE: optional testing versions such as `1.2.0-rc.1`.
 
-A version tag is `<package-name>-v<version>`, for example `test-g-v1.0.0`. The version is represented by the tag and metadata; it is not added to the ZIP filename. Published versions and their release assets are immutable. Never reuse a version number, even for a corrected archive.
+The release tag and release title are both `<package-name>-v<version>`, for example `test-g-v1.0.0`. The version is represented by the tag and metadata; it is not added to the ZIP filename. Published versions and their release assets are immutable. Never reuse a version number, even for a corrected archive.
 
 ## Review and publication
 
