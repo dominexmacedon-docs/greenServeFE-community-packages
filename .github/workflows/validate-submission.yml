@@ -52,8 +52,8 @@ jobs:
           gh api --paginate --jq '.[].filename' "repos/$GH_REPO/pulls/$PR_NUMBER/files" > changed-files.txt
           mapfile -t changed < changed-files.txt
 
-          if [[ "${#changed[@]}" -ne 2 ]]; then
-            echo "::error::A submission PR must change exactly two files: package.json and one platform ZIP."
+          if [[ "${#changed[@]}" -ne 3 ]]; then
+            echo "::error::A submission PR must change exactly three files: package.json, README.md, and one platform ZIP."
             exit 1
           fi
 
@@ -79,9 +79,15 @@ jobs:
           if not isinstance(platforms, list) or len(platforms) != 1 or not isinstance(platforms[0], str):
               raise SystemExit("package.json platforms must contain exactly one platform.")
           archive_name = f"{name}-{platforms[0]}.zip"
-          expected_zip = f"submissions/{name}/{version}/{archive_name}"
-          if paths != sorted([f"submissions/{name}/{version}/package.json", expected_zip]):
-              raise SystemExit(f"Only package.json and {archive_name} are allowed for this submission.")
+          base = f"submissions/{name}/{version}"
+          expected_meta = f"{base}/package.json"
+          expected_readme = f"{base}/README.md"
+          expected_zip = f"{base}/{archive_name}"
+          if paths != sorted([expected_meta, expected_readme, expected_zip]):
+              raise SystemExit(f"Only package.json, README.md, and {archive_name} are allowed for this submission.")
+          readme = root / expected_readme
+          if not readme.is_file():
+              raise SystemExit("The developer README.md is missing from the PR head.")
           archive = root / expected_zip
           if not archive.is_file():
               raise SystemExit("The submitted platform ZIP is missing from the PR head.")
@@ -90,6 +96,7 @@ jobs:
               "--metadata", str(metadata),
               "--zip", str(archive),
               "--expected-name", name,
-              "--expected-version", version
+              "--expected-version", version,
+              "--readme", str(readme)
           ], check=True)
           PY
