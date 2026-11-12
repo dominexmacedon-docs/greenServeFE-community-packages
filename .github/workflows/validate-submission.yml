@@ -53,11 +53,12 @@ jobs:
           mapfile -t changed < changed-files.txt
 
           if [[ "${#changed[@]}" -ne 2 ]]; then
-            echo "::error::A submission PR must change exactly two files: package.json and one ZIP."
+            echo "::error::A submission PR must change exactly two files: package.json and one platform ZIP."
             exit 1
           fi
 
           python3 - "${changed[@]}" <<'PY'
+          import json
           import pathlib
           import re
           import subprocess
@@ -69,14 +70,21 @@ jobs:
           if not match:
               raise SystemExit("Expected submissions/<name>/<version>/package.json")
           name, version = match.groups()
-          expected_zip = f"submissions/{name}/{version}/{name}-{version}.zip"
-          if paths != sorted([f"submissions/{name}/{version}/package.json", expected_zip]):
-              raise SystemExit("Only the matching package.json and <name>-<version>.zip are allowed.")
           root = pathlib.Path("pr-source")
           metadata = root / f"submissions/{name}/{version}/package.json"
+          if not metadata.is_file():
+              raise SystemExit("The submitted package.json is missing from the PR head.")
+          data = json.loads(metadata.read_text(encoding="utf-8"))
+          platforms = data.get("platforms")
+          if not isinstance(platforms, list) or len(platforms) != 1 or not isinstance(platforms[0], str):
+              raise SystemExit("package.json platforms must contain exactly one platform.")
+          archive_name = f"{name}-{platforms[0]}.zip"
+          expected_zip = f"submissions/{name}/{version}/{archive_name}"
+          if paths != sorted([f"submissions/{name}/{version}/package.json", expected_zip]):
+              raise SystemExit(f"Only package.json and {archive_name} are allowed for this submission.")
           archive = root / expected_zip
-          if not metadata.is_file() or not archive.is_file():
-              raise SystemExit("The submitted metadata or ZIP is missing from the PR head.")
+          if not archive.is_file():
+              raise SystemExit("The submitted platform ZIP is missing from the PR head.")
           subprocess.run([
               sys.executable, "scripts/validate_submission.py",
               "--metadata", str(metadata),
