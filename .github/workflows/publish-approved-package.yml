@@ -54,7 +54,6 @@ jobs:
 
           HEAD_REPO="$(jq -r '.head.repo.full_name' pr.json)"
           HEAD_SHA="$(jq -r '.head.sha' pr.json)"
-          BASE_SHA="$(jq -r '.base.sha' pr.json)"
 
           gh api --paginate --slurp "repos/$GH_REPO/pulls/$PR_NUMBER/reviews" > reviews-pages.json
           jq -e --arg owner "$GH_OWNER" --arg sha "$HEAD_SHA" '
@@ -67,39 +66,49 @@ jobs:
           gh api --paginate --jq '.[].filename' "repos/$GH_REPO/pulls/$PR_NUMBER/files" > changed-files.txt
           mapfile -t changed < changed-files.txt
           if [[ "${#changed[@]}" -ne 2 ]]; then
-            echo "::error::The PR must contain exactly package.json and one ZIP."
+            echo "::error::The PR must contain exactly package.json and one platform ZIP."
             exit 1
           fi
 
-          python3 - "${changed[@]}" <<'PY'
-          import re, sys
-          paths = sorted(sys.argv[1:])
-          m = next((re.fullmatch(r"submissions/([a-z0-9]+(?:-[a-z0-9]+)*)/([^/]+)/package\.json", p) for p in paths if re.fullmatch(r"submissions/([a-z0-9]+(?:-[a-z0-9]+)*)/([^/]+)/package\.json", p)), None)
-          if not m:
-              raise SystemExit("Missing expected package metadata path.")
-          name, version = m.groups()
-          expected = sorted([f"submissions/{name}/{version}/package.json", f"submissions/{name}/{version}/{name}-{version}.zip"])
-          if paths != expected:
-              raise SystemExit("PR contains unexpected files or mismatched package paths.")
-          print(name)
-          print(version)
-          PY
-          mapfile -t identity < <(python3 - "${changed[@]}" <<'PY'
-          import re, sys
-          p = next(p for p in sys.argv[1:] if p.endswith("/package.json"))
-          m = re.fullmatch(r"submissions/([a-z0-9]+(?:-[a-z0-9]+)*)/([^/]+)/package\.json", p)
-          print(m.group(1)); print(m.group(2))
-          PY
-          )
-          NAME="${identity[0]}"
-          VERSION="${identity[1]}"
-          META_PATH="submissions/$NAME/$VERSION/package.json"
-          ZIP_NAME="$NAME-$VERSION.zip"
-          ZIP_PATH="submissions/$NAME/$VERSION/$ZIP_NAME"
+          META_PATH="$(printf '%s\n' "${changed[@]}" | grep -E '^submissions/[a-z0-9]+(-[a-z0-9]+)*/[^/]+/package\.json$' || true)"
+          if [[ -z "$META_PATH" ]]; then
+            echo "::error::Missing submissions/<name>/<version>/package.json."
+            exit 1
+          fi
+
+          NAME="$(printf '%s' "$META_PATH" | cut -d/ -f2)"
+          VERSION="$(printf '%s' "$META_PATH" | cut -d/ -f3)"
           RAW="https://raw.githubusercontent.com/$HEAD_REPO/$HEAD_SHA"
 
           mkdir -p publication
           curl --fail --location --retry 3 --silent --show-error "$RAW/$META_PATH" -o publication/package.json
+
+          readarray -t identity < <(python3 - publication/package.json "$NAME" "$VERSION" <<'PY'
+          import json, re, sys
+          path, expected_name, expected_version = sys.argv[1:]
+          data = json.load(open(path, encoding="utf-8"))
+          if data.get("name") != expected_name or data.get("version") != expected_version:
+              raise SystemExit("Metadata name/version do not match the submission directory.")
+          platforms = data.get("platforms")
+          if not isinstance(platforms, list) or len(platforms) != 1 or not isinstance(platforms[0], str):
+              raise SystemExit("Exactly one platform must be declared.")
+          platform = platforms[0]
+          if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", platform):
+              raise SystemExit("Invalid platform identifier.")
+          print(platform)
+          print(f"{expected_name}-{platform}.zip")
+          PY
+          )
+          PLATFORM="${identity[0]}"
+          ZIP_NAME="${identity[1]}"
+          ZIP_PATH="submissions/$NAME/$VERSION/$ZIP_NAME"
+          EXPECTED_META="submissions/$NAME/$VERSION/package.json"
+          if [[ "${changed[0]}" != "$EXPECTED_META" && "${changed[1]}" != "$EXPECTED_META" ]] || \
+             [[ "${changed[0]}" != "$ZIP_PATH" && "${changed[1]}" != "$ZIP_PATH" ]]; then
+            echo "::error::The PR must contain only package.json and $ZIP_NAME in the matching package/version directory."
+            exit 1
+          fi
+
           curl --fail --location --retry 3 --silent --show-error "$RAW/$ZIP_PATH" -o "publication/$ZIP_NAME"
 
           python3 scripts/validate_submission.py \
@@ -120,10 +129,10 @@ jobs:
 
           DIGEST="$(sha256sum "publication/$ZIP_NAME" | awk '{print $1}')"
           printf '%s  %s\n' "$DIGEST" "$ZIP_NAME" > "publication/$ZIP_NAME.sha256"
-          printf 'Package: %s\nVersion: %s\nDeveloper: %s\nCompatibility: %s\nPlatforms: %s\n\nSHA-256: %s\n\nThis release was reviewed and manually published by the repository owner. Published versions are immutable.\n' \
+          printf 'Package: %s\nVersion: %s\nDeveloper: %s\nCompatibility: %s\nPlatform: %s\n\nSHA-256: %s\n\nThis release was reviewed and manually published by the repository owner. Published versions are immutable.\n' \
             "$NAME" "$VERSION" "$(jq -r '.author' publication/package.json)" \
             "$(jq -r '.greenServeFE' publication/package.json)" \
-            "$(jq -r '.platforms | join(", ")' publication/package.json)" "$DIGEST" > publication/RELEASE_NOTES.md
+            "$PLATFORM" "$DIGEST" > publication/RELEASE_NOTES.md
 
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
@@ -170,5 +179,5 @@ jobs:
         run: |
           set -euo pipefail
           gh pr comment "${{ steps.submission.outputs.pr_number }}" --body \
-            "Approved and published as [${{ steps.submission.outputs.name }} v${{ steps.submission.outputs.version }}](https://github.com/$GITHUB_REPOSITORY/releases/tag/${{ steps.submission.outputs.tag }}). The ZIP, SHA-256 checksum, and metadata are available in the release. The registry has been updated. This submission PR is being closed without merging so binary ZIP files do not accumulate in the Git history."
+            "Approved and published as [${{ steps.submission.outputs.name }} v${{ steps.submission.outputs.version }}](https://github.com/$GITHUB_REPOSITORY/releases/tag/${{ steps.submission.outputs.tag }}). The platform ZIP, SHA-256 checksum, and metadata are available in the release. The registry has been updated. This submission PR is being closed without merging so binary ZIP files do not accumulate in the Git history."
           gh pr close "${{ steps.submission.outputs.pr_number }}"
