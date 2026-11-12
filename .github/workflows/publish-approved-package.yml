@@ -152,7 +152,7 @@ jobs:
             "publication/${{ steps.submission.outputs.zip_name }}#${{ steps.submission.outputs.zip_name }}" \
             "publication/${{ steps.submission.outputs.zip_name }}.sha256#${{ steps.submission.outputs.zip_name }}.sha256" \
             "publication/package.json#package.json" \
-            --title "${{ steps.submission.outputs.name }} v${{ steps.submission.outputs.version }}" \
+            --title "${{ steps.submission.outputs.tag }}" \
             --notes-file publication/RELEASE_NOTES.md \
             --target main
 
